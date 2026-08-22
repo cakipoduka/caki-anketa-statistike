@@ -10,10 +10,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from anketa_pipeline import (
+    SVI_PREDMETI_GRID,
+    _normaliziraj,
+    agregat_po_predmetu,
     agregat_po_programu,
     agregat_zadovoljstvo_kombinirano,
     get_gspread_client,
     load_odgovori,
+    ucitaj_javnu_vidljivost,
 )
 
 st.set_page_config(page_title="CAKI — Statistike ankete", page_icon="📊", layout="centered")
@@ -138,3 +142,25 @@ if not df_zadovoljstvo.empty:
         "Prosjek svih predmetnih ocjena zajedno (bez raščlambe po predmetu — "
         "to je namjerno, raščlamba po predmetu je de facto raščlamba po profesoru)."
     )
+
+# --- 5. Predmeti koje je admin ručno objavio (prazno dok admin ništa ne objavi) ---
+vidljivost = ucitaj_javnu_vidljivost(init_sheet())  # bez cachea — objava mora biti odmah vidljiva
+objavljeni_predmeti = [p for p in SVI_PREDMETI_GRID if vidljivost.get(_normaliziraj(p), False)]
+
+if objavljeni_predmeti:
+    st.subheader("Rezultati po predmetu")
+    st.caption("Ovi predmeti su ručno objavljeni od strane administratora.")
+    df_po_predmetu = agregat_po_predmetu(df_sirovi)
+    for predmet in objavljeni_predmeti:
+        podaci = df_po_predmetu[df_po_predmetu["predmet"] == predmet].sort_values("generacija")
+        if podaci.empty:
+            continue
+        fig5 = go.Figure()
+        fig5.add_trace(go.Bar(
+            x=podaci["generacija"], y=podaci["prosjek_opce_ocjene"],
+            marker_color=BOJE_PROGRAM["Matematičke gimnazije"],
+        ))
+        _osnovni_layout(fig5, yaxis_title="Prosječna ocjena (1-5)", xaxis_title="Generacija",
+                        yaxis=dict(range=[1, 5], gridcolor=GRID_LINIJA), xaxis=dict(gridcolor=GRID_LINIJA, dtick=1))
+        st.caption(predmet)
+        st.plotly_chart(fig5, use_container_width=True)
