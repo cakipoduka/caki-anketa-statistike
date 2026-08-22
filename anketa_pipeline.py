@@ -6,6 +6,8 @@ računanje agregata po programu i po generaciji (školskoj godini).
 Isti stack/pattern kao pipeline_upisi.py i baza_zadataka_pipeline.py
 (get_gspread_client / Service Account preko gspread-a).
 """
+import re
+
 import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
@@ -17,13 +19,20 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 # Ako se pitanja u Formi promijene, prilagodi SAMO ove konstante — ostatak koda
 # gradi nazive stupaca automatski iz njih. Google Forms izvozi grid pitanje kao
 # poseban stupac po retku: "NASLOV GRIDA [tekst retka]".
+#
+# Napomena o razmacima: Google Forms u zaglavlju često dodaje suvišne razmake na
+# kraju pitanja (i katkad dvostruke razmake pred "[" kod grida, ako je sam naslov
+# grida upisan s razmakom na kraju). load_odgovori() normalizira SVE nazive
+# stupaca (višestruki razmaci -> jedan, obrezani rubovi) čim učita podatke, pa
+# konstante ovdje smiju biti napisane "čisto", bez brige o točnom broju razmaka —
+# samo sadržaj teksta mora odgovarati stvarnom pitanju.
 
 ROW_LABELS = [
-    "Kvalitetnim primjerima i zadacima olakšava razumijevanje gradiva",
+    "Kvalitetnim primjerima i zadacima olakšava razumijevanje sadržaja",
     "Jasno i razumljivo izlaže/demonstrira nastavne sadržaje",
-    "Ima dobre komunikacijske vještine i stvara ugodnu atmosferu na nastavi",
-    "Dostupan/na je i susretljiv/a za konzultacije s učenicima",
-    "Koju biste opću ocjenu dali ovom profesoru/profesorici?",
+    "Ima dobre komunikacijske vještine i stvara ugodnu radnu atmosferu",
+    "Dostupan je i susretljiv za konzultacije sa učenicima",
+    "Koju biste opću ocjenu dali ovom profesoru u cjelini?",
 ]
 OPCA_OCJENA_LABEL = ROW_LABELS[-1]
 
@@ -46,8 +55,10 @@ PROGRAMI = {
     "prelog": {
         "naziv": "Prelog (PSVP)",
         "pitanje_pohadja": "Je li dijete pohađalo CAKI pripremu za Prelog / PSVP (fizika, kemija, biologija)?",
-        "pitanje_prijemni": "Vaš rezultat na prijemnom ispitu za Prelog / PSVP (broj bodova)",
-        "pitanje_simulacije": "Prosječan broj bodova na simulacijama u CAKI centru za Prelog / PSVP",
+        # Napomena: u stvarnoj formi ova dva pitanja koriste stariju/kraću formulaciju
+        # (bez "Prosječan... za Prelog/PSVP" sufiksa) — usklađeno prema stvarnom zaglavlju.
+        "pitanje_prijemni": "Vaš rezultat na prijemnom ispitu za PSVP (broj bodova)",
+        "pitanje_simulacije": "Rezultat na simulacijama u CAKI centru",
         "broj_simulacija": 3,
     },
 }
@@ -67,6 +78,13 @@ def grid_kolona(naslov_grida: str, row_label: str = OPCA_OCJENA_LABEL) -> str:
     return f"{naslov_grida} [{row_label}]"
 
 
+def _normaliziraj(naziv: str) -> str:
+    """Kolabira sve nizove razmaka (uklj. dvostruke/trostruke) u jedan i obreže rubove.
+    Rješava neslaganje kad Forms u zaglavlju doda suvišne razmake koje se ne vide
+    golim okom u Sheetu, a razbijaju točan string-match s konstantama gore."""
+    return re.sub(r"\s+", " ", str(naziv)).strip()
+
+
 # --- Autentifikacija (identično pipeline_upisi.py / baza_zadataka_pipeline.py) ---
 
 def get_credentials(service_account_info: dict):
@@ -79,7 +97,7 @@ def get_gspread_client(service_account_info: dict):
 
 # --- Učitavanje i priprema podataka ---
 
-def load_odgovori(sheet, worksheet_naziv: str = "Form responses 1") -> pd.DataFrame:
+def load_odgovori(sheet, worksheet_naziv: str = "Form Responses 1") -> pd.DataFrame:
     """Učitava sirove odgovore i dodaje 'generacija' stupac izveden iz Timestampa.
 
     Napomena: anketa se provodi svake sezone u istom razdoblju (kraj pripreme/
@@ -92,6 +110,7 @@ def load_odgovori(sheet, worksheet_naziv: str = "Form responses 1") -> pd.DataFr
     df = pd.DataFrame(records)
     if df.empty:
         return df
+    df.columns = [_normaliziraj(c) for c in df.columns]
     df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
     df["generacija"] = df["Timestamp"].dt.year
     return df
