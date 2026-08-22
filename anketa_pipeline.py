@@ -12,8 +12,14 @@ import gspread
 import pandas as pd
 from google.oauth2.service_account import Credentials
 
-# Samo čitanje — ova aplikacija nikad ne piše natrag u Sheet.
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+# Puni pristup (čitanje + pisanje) — otkad admin može javno objaviti/sakriti
+# predmet klikom u aplikaciji, treba i pisanje (v. _osiguraj_postavke_tab niže).
+# Service Account mora biti dodan kao EDITOR na Sheetu (ne samo Viewer).
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+# --- Javna objava po predmetu (admin uključuje/isključuje klikom u internoj app) ---
+POSTAVKE_TAB_NAZIV = "Postavke javne vidljivosti"
+POSTAVKE_HEADERI = ["predmet", "javno_vidljivo"]
 
 # --- Konfiguracija koja odgovara strukturi Forme (v2 upute, CAKI_anketa_upute_priprema.md) ---
 # Ako se pitanja u Formi promijene, prilagodi SAMO ove konstante — ostatak koda
@@ -221,3 +227,40 @@ def agregat_tvrdnje_po_predmetu(df: pd.DataFrame, predmet: str) -> pd.DataFrame:
                 "broj_odgovora": len(grupa),
             })
     return pd.DataFrame(redovi)
+
+
+# --- Javna objava po predmetu: admin uključuje/isključuje klikom, bez diranja koda ---
+
+def _osiguraj_postavke_tab(sheet):
+    """Dohvaća tab s postavkama javne vidljivosti po predmetu — kreira ga sa
+    sigurnim zadanim stanjem (sve NE, ništa nije javno dok admin ne klikne) ako
+    još ne postoji. Isti 'jednokratni setup' obrazac kao postavi_tabove_booking()
+    u pipeline_upisi.py."""
+    try:
+        return sheet.worksheet(POSTAVKE_TAB_NAZIV)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sheet.add_worksheet(title=POSTAVKE_TAB_NAZIV, rows=len(SVI_PREDMETI_GRID) + 1, cols=2)
+        ws.update([POSTAVKE_HEADERI] + [[p, "NE"] for p in SVI_PREDMETI_GRID])
+        return ws
+
+
+def ucitaj_javnu_vidljivost(sheet) -> dict:
+    """Vraća {predmet: True/False} — koji su predmeti trenutno objavljeni javno."""
+    ws = _osiguraj_postavke_tab(sheet)
+    records = ws.get_all_records()
+    return {
+        _normaliziraj(r.get("predmet", "")): str(r.get("javno_vidljivo", "")).strip().upper() == "DA"
+        for r in records
+    }
+
+
+def postavi_javnu_vidljivost(sheet, predmet: str, vidljivo: bool):
+    """Upisuje DA/NE za jedan predmet — poziva ga admin gumbom s interne stranice."""
+    ws = _osiguraj_postavke_tab(sheet)
+    celije = ws.get_all_values()
+    for i, red in enumerate(celije[1:], start=2):  # preskoči zaglavlje (redak 1)
+        if red and _normaliziraj(red[0]) == _normaliziraj(predmet):
+            ws.update_cell(i, 2, "DA" if vidljivo else "NE")
+            return
+    # Predmet nije pronađen (npr. tab ručno izmijenjen) — dodaj ga kao novi redak.
+    ws.append_row([predmet, "DA" if vidljivo else "NE"])
