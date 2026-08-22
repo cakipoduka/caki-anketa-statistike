@@ -10,10 +10,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from anketa_pipeline import (
+    ROW_LABELS,
     SVI_PREDMETI_GRID,
     _normaliziraj,
     agregat_po_predmetu,
     agregat_po_programu,
+    agregat_tvrdnje_po_predmetu,
     agregat_zadovoljstvo_kombinirano,
     get_gspread_client,
     load_odgovori,
@@ -163,4 +165,10 @@ if objavljeni_predmeti:
         _osnovni_layout(fig5, yaxis_title="Prosječna ocjena (1-5)", xaxis_title="Generacija",
                         yaxis=dict(range=[1, 5], gridcolor=GRID_LINIJA), xaxis=dict(gridcolor=GRID_LINIJA, dtick=1))
         st.caption(predmet)
-        st.plotly_chart(fig5, use_container_width=True)
+        st.plotly_chart(fig5, use_container_width=True, key=f"javni_graf_{predmet}")
+
+        df_tvrdnje = agregat_tvrdnje_po_predmetu(df_sirovi, predmet)
+        if not df_tvrdnje.empty:
+            tablica = df_tvrdnje.pivot(index="tvrdnja", columns="generacija", values="prosjek").round(2)
+            tablica = tablica.reindex(ROW_LABELS)
+            st.dataframe(tablica, use_container_width=True, key=f"javna_tablica_{predmet}")
