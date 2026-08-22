@@ -79,7 +79,7 @@ def get_gspread_client(service_account_info: dict):
 
 # --- Učitavanje i priprema podataka ---
 
-def load_odgovori(sheet, worksheet_naziv: str = "CAKI ANKETA pripreme SREDNJA ŠKOLA 26' (Responses)") -> pd.DataFrame:
+def load_odgovori(sheet, worksheet_naziv: str = "Form responses 1") -> pd.DataFrame:
     """Učitava sirove odgovore i dodaje 'generacija' stupac izveden iz Timestampa.
 
     Napomena: anketa se provodi svake sezone u istom razdoblju (kraj pripreme/
