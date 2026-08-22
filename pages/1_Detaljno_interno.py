@@ -16,10 +16,13 @@ import streamlit as st
 from anketa_pipeline import (
     ROW_LABELS,
     SVI_PREDMETI_GRID,
+    _normaliziraj,
     agregat_po_predmetu,
     agregat_tvrdnje_po_predmetu,
     get_gspread_client,
     load_odgovori,
+    postavi_javnu_vidljivost,
+    ucitaj_javnu_vidljivost,
 )
 
 st.set_page_config(page_title="CAKI — Detaljno (interno)", page_icon="🔒", layout="wide")
@@ -101,6 +104,29 @@ else:
     tablica = df_tvrdnje.pivot(index="tvrdnja", columns="generacija", values="prosjek").round(2)
     tablica = tablica.reindex(ROW_LABELS)
     st.dataframe(tablica, use_container_width=True)
+
+st.divider()
+st.subheader("Javna objava po predmetu")
+st.caption(
+    "Predmeti označeni 'Objavljeno' pojavljuju se u zasebnom odjeljku na javnoj "
+    "stranici (ostatak javne stranice ostaje bez raščlambe po predmetu, kao i do sad)."
+)
+
+sheet = init_sheet()
+vidljivost = ucitaj_javnu_vidljivost(sheet)  # namjerno bez cachea — promjena mora biti odmah vidljiva
+
+for p in SVI_PREDMETI_GRID:
+    trenutno_javno = vidljivost.get(_normaliziraj(p), False)
+    stupac_naziv, stupac_gumb = st.columns([3, 1])
+    stupac_naziv.write(f"**{p}** — {'🟢 Objavljeno javno' if trenutno_javno else '⚪ Skriveno (samo interno)'}")
+    if trenutno_javno:
+        if stupac_gumb.button("Ukloni s javnog", key=f"sakrij_{p}"):
+            postavi_javnu_vidljivost(sheet, p, False)
+            st.rerun()
+    else:
+        if stupac_gumb.button("Objavi javno", key=f"objavi_{p}"):
+            postavi_javnu_vidljivost(sheet, p, True)
+            st.rerun()
 
 st.divider()
 st.subheader("Sirovi podaci (za izvoz)")
