@@ -97,15 +97,27 @@ def get_gspread_client(service_account_info: dict):
 
 # --- Učitavanje i priprema podataka ---
 
-def load_odgovori(sheet, worksheet_naziv: str = "Form Responses 1") -> pd.DataFrame:
+def load_odgovori(sheet, worksheet_naziv: str | None = None) -> pd.DataFrame:
     """Učitava sirove odgovore i dodaje 'generacija' stupac izveden iz Timestampa.
 
     Napomena: anketa se provodi svake sezone u istom razdoblju (kraj pripreme/
     upisa), pa je YEAR(Timestamp) dovoljan za razlikovanje generacija. Ako se
     ikad provede anketa koja premošćuje kalendarsku godinu, ovo treba zamijeniti
     pravom "školska godina" logikom (kao trenutna_skolska_godina_broj u CRM §7).
+
+    worksheet_naziv je opcionalan NAMJERNO — točan naziv taba je već dvaput bio
+    izvor grešaka (naziv datoteke vs. naziv taba, pa pogrešan default u kodu).
+    Bez zadanog naziva, uzima se prvi/jedini tab u Sheetu (sheet.sheet1), što je
+    ispravno dokle god ovaj Sheet služi isključivo za odgovore ove ankete. Ako
+    ikad dodaš dodatne tabove u isti Sheet, tek onda proslijedi točan naziv.
     """
-    ws = sheet.worksheet(worksheet_naziv)
+    if worksheet_naziv:
+        try:
+            ws = sheet.worksheet(worksheet_naziv)
+        except gspread.exceptions.WorksheetNotFound:
+            ws = sheet.sheet1
+    else:
+        ws = sheet.sheet1
     records = ws.get_all_records()
     df = pd.DataFrame(records)
     if df.empty:
@@ -117,7 +129,13 @@ def load_odgovori(sheet, worksheet_naziv: str = "Form Responses 1") -> pd.DataFr
 
 
 def _to_numeric(series) -> pd.Series:
-    return pd.to_numeric(series, errors="coerce")
+    """Pretvara stupac u brojeve, prihvaćajući i zarez i točku kao decimalni
+    separator (roditelji pišu i '6,7' i '6.7' — bez ovoga bi '6,7' tiho postao
+    NaN i ispao iz prosjeka, bez ikakve greške)."""
+    if series is None:
+        return pd.Series(dtype=float)
+    ociscen = series.astype(str).str.strip().str.replace(",", ".", regex=False)
+    return pd.to_numeric(ociscen, errors="coerce")
 
 
 def agregat_po_programu(df: pd.DataFrame) -> pd.DataFrame:
